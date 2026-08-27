@@ -14,3 +14,6 @@ build/
 Restaurant Ordering + Kitchen Display System/tools/mysql-9.7.1-winx64/
 Restaurant Ordering + Kitchen Display System/tools/data/
 *.pid
+
+# Build artifacts too large for GitHub
+*.apk
