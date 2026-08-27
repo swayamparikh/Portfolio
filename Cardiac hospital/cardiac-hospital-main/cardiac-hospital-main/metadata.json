@@ -1,0 +1,6 @@
+{
+  "name": "Pulse Cardiac & Multi-Specialty Hospital",
+  "description": "Premium patient-centric web portal for Cardiac, Intensive Care, and Multi-Specialty medical excellence with real-time Doctor catalogs, Heart checkup planners, online Appointment scheduling, and Emergency helplines.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

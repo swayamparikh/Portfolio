@@ -1,0 +1,16 @@
+node_modules/
+.next/
+dist/
+build/
+.env
+.env.local
+.env.*.local
+!.env.example
+!.env.local.example
+*.log
+.DS_Store
+
+# Bundled binaries / local database runtime — not project source
+Restaurant Ordering + Kitchen Display System/tools/mysql-9.7.1-winx64/
+Restaurant Ordering + Kitchen Display System/tools/data/
+*.pid

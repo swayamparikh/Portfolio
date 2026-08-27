@@ -1,0 +1,66 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --surface: #f7f8fa;
+
+  --coral-from: #ff5a5f;
+  --coral-to: #ff385c;
+  --ocean: #1a73e8;
+  --trust: #00a699;
+
+  --text-heading: #1a1a1a;
+  --text-body: #404040;
+  --text-muted: #717171;
+  --border-color: #ebebeb;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+
+  --color-coral-from: var(--coral-from);
+  --color-coral-to: var(--coral-to);
+  --color-ocean: var(--ocean);
+  --color-trust: var(--trust);
+
+  --color-text-heading: var(--text-heading);
+  --color-text-body: var(--text-body);
+  --color-text-muted: var(--text-muted);
+  --color-border: var(--border-color);
+
+  --font-heading: var(--font-sora);
+  --font-body: var(--font-inter);
+}
+
+body {
+  background: var(--background);
+  color: var(--text-body);
+  font-family: var(--font-body), Arial, Helvetica, sans-serif;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  color: var(--text-heading);
+  font-family: var(--font-heading), Arial, Helvetica, sans-serif;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* skeleton shimmer loading state — light gray pulse (Section 5) */
+@keyframes shimmer {
+  0% { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+
+.skeleton {
+  background: linear-gradient(90deg, #eef0f3 25%, #f7f8fa 37%, #eef0f3 63%);
+  background-size: 800px 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}

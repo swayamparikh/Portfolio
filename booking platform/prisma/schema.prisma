@@ -1,0 +1,267 @@
+// Nestly — Prisma schema
+// Mirrors Section 7 of Nestly-Booking-Platform-Spec.md. Every domain field
+// is @map()'d to the exact snake_case column name from the spec's SQL, so
+// prisma/sql/constraints.sql (which is written against that snake_case
+// schema) applies cleanly on top of `prisma migrate`.
+// The no_overlapping_bookings EXCLUDE/GIST constraint and the PostGIS
+// `location` geography column are not expressible in the Prisma schema
+// language, so they are added by that raw-SQL file instead.
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [postgis]
+}
+
+// ---------- Enums ----------
+
+enum Role {
+  guest
+  host
+  admin
+}
+
+enum PropertyType {
+  entire_place
+  private_room
+  shared_room
+}
+
+enum ListingStatus {
+  pending
+  approved
+  rejected
+  suspended
+}
+
+enum BookingStatus {
+  pending
+  confirmed
+  cancelled
+  completed
+}
+
+enum RevieweeType {
+  listing
+  guest
+}
+
+enum PayoutStatus {
+  pending
+  paid
+  failed
+}
+
+// ---------- NextAuth ----------
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ---------- Core domain ----------
+
+model User {
+  id              String   @id @default(uuid())
+  email           String   @unique
+  name            String?
+  role            Role     @default(guest)
+  profilePhotoUrl String?  @map("profile_photo_url")
+  passwordHash    String?  @map("password_hash")
+  verified        Boolean  @default(false)
+  // Stripe Connect Express account id — not in the Section 7 spec schema,
+  // added because it's required to actually route host payouts (Section 9.6).
+  stripeAccountId String?  @map("stripe_account_id")
+  // Also not in Section 7 — required for the admin "suspend capability" in
+  // Section 4.3.
+  suspended       Boolean  @default(false)
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  accounts Account[]
+  sessions Session[]
+
+  listings         Listing[]
+  bookings         Booking[] @relation("GuestBookings")
+  reviewsWritten   Review[]  @relation("ReviewsWritten")
+  messagesSent     Message[] @relation("MessagesSent")
+  messagesReceived Message[] @relation("MessagesReceived")
+  payouts          Payout[]
+
+  @@map("users")
+}
+
+model Listing {
+  id                     String        @id @default(uuid())
+  hostId                 String        @map("host_id")
+  title                  String
+  description            String?
+  propertyType           PropertyType? @map("property_type")
+  address                String?
+  // PostGIS GEOGRAPHY(Point, 4326) — set/queried via raw SQL (ST_SetSRID / ST_MakePoint)
+  location               Unsupported("geography(Point, 4326)")?
+  basePricePerNight      Decimal       @db.Decimal(10, 2) @map("base_price_per_night")
+  cleaningFee            Decimal       @default(0) @db.Decimal(10, 2) @map("cleaning_fee")
+  maxGuests              Int?          @map("max_guests")
+  bedrooms               Int?
+  beds                   Int?
+  bathrooms              Int?
+  amenities              String[]      @default([])
+  instantBook            Boolean       @default(false) @map("instant_book")
+  status                 ListingStatus @default(pending)
+  aiGeneratedDescription Boolean       @default(false) @map("ai_generated_description")
+  createdAt              DateTime      @default(now()) @map("created_at")
+
+  host         User           @relation(fields: [hostId], references: [id], onDelete: Cascade)
+  photos       ListingPhoto[]
+  availability Availability[]
+  bookings     Booking[]
+  reviews      Review[]
+
+  @@map("listings")
+}
+
+model ListingPhoto {
+  id        String @id @default(uuid())
+  listingId String @map("listing_id")
+  url       String
+  sortOrder Int    @default(0) @map("sort_order")
+
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@map("listing_photos")
+}
+
+model Availability {
+  id               String   @id @default(uuid())
+  listingId        String   @map("listing_id")
+  date             DateTime @db.Date
+  isBlocked        Boolean  @default(false) @map("is_blocked")
+  customPrice      Decimal? @db.Decimal(10, 2) @map("custom_price")
+  aiSuggestedPrice Decimal? @db.Decimal(10, 2) @map("ai_suggested_price")
+
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@unique([listingId, date])
+  @@map("availability")
+}
+
+model Booking {
+  id                    String        @id @default(uuid())
+  listingId             String        @map("listing_id")
+  guestId               String        @map("guest_id")
+  checkIn               DateTime      @db.Date @map("check_in")
+  checkOut              DateTime      @db.Date @map("check_out")
+  guestsCount           Int?          @map("guests_count")
+  totalPrice            Decimal       @db.Decimal(10, 2) @map("total_price")
+  platformCommission    Decimal       @db.Decimal(10, 2) @map("platform_commission")
+  hostPayout            Decimal       @db.Decimal(10, 2) @map("host_payout")
+  status                BookingStatus @default(pending)
+  stripePaymentIntentId String?       @map("stripe_payment_intent_id")
+  createdAt              DateTime     @default(now()) @map("created_at")
+
+  listing  Listing   @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  guest    User      @relation("GuestBookings", fields: [guestId], references: [id])
+  reviews  Review[]
+  messages Message[]
+  payouts  Payout[]
+
+  // no_overlapping_bookings EXCLUDE USING gist constraint is added in the
+  // raw-SQL migration — this is the single most important correctness
+  // guarantee in the platform (prevents double-booking at the DB level).
+
+  @@map("bookings")
+}
+
+model Review {
+  id                String       @id @default(uuid())
+  bookingId         String       @map("booking_id")
+  reviewerId        String       @map("reviewer_id")
+  listingId         String?      @map("listing_id")
+  revieweeType      RevieweeType @map("reviewee_type")
+  rating            Int
+  comment           String?
+  aiSummaryIncluded Boolean      @default(false) @map("ai_summary_included")
+  createdAt         DateTime     @default(now()) @map("created_at")
+
+  booking  Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  reviewer User     @relation("ReviewsWritten", fields: [reviewerId], references: [id])
+  listing  Listing? @relation(fields: [listingId], references: [id])
+
+  @@map("reviews")
+}
+
+model Message {
+  id          String   @id @default(uuid())
+  bookingId   String?  @map("booking_id")
+  senderId    String   @map("sender_id")
+  recipientId String   @map("recipient_id")
+  content     String
+  aiDrafted   Boolean  @default(false) @map("ai_drafted")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  booking   Booking? @relation(fields: [bookingId], references: [id])
+  sender    User     @relation("MessagesSent", fields: [senderId], references: [id])
+  recipient User     @relation("MessagesReceived", fields: [recipientId], references: [id])
+
+  @@map("messages")
+}
+
+// Not in the Section 7 spec schema — a minimal key/value store backing the
+// admin "commission rate configuration" control in Section 4.3 / 8.
+model PlatformSetting {
+  key   String @id
+  value String
+
+  @@map("platform_settings")
+}
+
+model Payout {
+  id               String       @id @default(uuid())
+  hostId           String       @map("host_id")
+  bookingId        String?      @map("booking_id")
+  amount           Decimal      @db.Decimal(10, 2)
+  status           PayoutStatus @default(pending)
+  stripeTransferId String?      @map("stripe_transfer_id")
+  paidAt           DateTime?    @map("paid_at")
+
+  host    User     @relation(fields: [hostId], references: [id])
+  booking Booking? @relation(fields: [bookingId], references: [id])
+
+  @@map("payouts")
+}

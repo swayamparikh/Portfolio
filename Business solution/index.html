@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#12A150" />
+  <title>LedgerLite — AI Bookkeeping</title>
+  <meta name="description" content="Snap it, and it's booked. AI bookkeeping for businesses that can't afford a bookkeeper." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- App shell -->
+  <div id="app" class="app">
+
+    <!-- Desktop sidebar / brand -->
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">₹</div>
+        <div class="brand-text">
+          <strong>LedgerLite</strong>
+          <span>Snap it, and it's booked.</span>
+        </div>
+      </div>
+
+      <div class="biz-switcher" id="bizSwitcher">
+        <label>Business</label>
+        <select id="bizSelect" aria-label="Select business"></select>
+      </div>
+
+      <nav class="nav" id="mainNav" aria-label="Primary">
+        <button class="nav-item" data-view="dashboard"><span class="ni-ic">▚</span><span>Dashboard</span></button>
+        <button class="nav-item" data-view="scan"><span class="ni-ic">◎</span><span>Scan Receipt</span></button>
+        <button class="nav-item" data-view="review"><span class="ni-ic">☑</span><span>Review Queue<em class="badge" id="reviewBadge">0</em></span></button>
+        <button class="nav-item" data-view="ledger"><span class="ni-ic">≣</span><span>Ledger</span></button>
+        <button class="nav-item" data-view="reports"><span class="ni-ic">◔</span><span>Reports</span></button>
+        <button class="nav-item" data-view="ask"><span class="ni-ic">✦</span><span>Ask AI</span></button>
+      </nav>
+
+      <div class="sidebar-foot">
+        <p>Idea &amp; concept by<br /><strong>Swayam Parikh</strong></p>
+      </div>
+    </aside>
+
+    <!-- Main column -->
+    <div class="main">
+      <!-- Top bar (mobile + desktop) -->
+      <header class="topbar">
+        <button class="icon-btn only-mobile" id="menuBtn" aria-label="Open menu">☰</button>
+        <div class="topbar-title" id="topbarTitle">Dashboard</div>
+        <div class="topbar-biz only-mobile">
+          <select id="bizSelectMobile" aria-label="Select business"></select>
+        </div>
+        <button class="scan-cta only-desktop" data-view="scan">＋ Scan Receipt</button>
+      </header>
+
+      <main class="content" id="content"><!-- views injected here --></main>
+    </div>
+
+    <!-- Mobile bottom nav -->
+    <nav class="tabbar only-mobile" aria-label="Primary mobile">
+      <button class="tab" data-view="dashboard"><span>▚</span>Home</button>
+      <button class="tab" data-view="ledger"><span>≣</span>Ledger</button>
+      <button class="tab tab-scan" data-view="scan" aria-label="Scan receipt"><span class="tab-scan-ic">＋</span></button>
+      <button class="tab" data-view="review"><span>☑</span>Review<em class="tabbadge" id="reviewBadgeMobile">0</em></button>
+      <button class="tab" data-view="reports"><span>◔</span>Reports</button>
+    </nav>
+
+    <!-- Mobile menu scrim -->
+    <div class="scrim" id="scrim" hidden></div>
+  </div>
+
+  <!-- Toast host -->
+  <div class="toast-host" id="toastHost" aria-live="polite"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

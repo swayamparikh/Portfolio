@@ -1,0 +1,6 @@
+{
+  "name": "StyleSync AI",
+  "description": "Your ultimate personal AI-powered fashion stylist and helper to plan outfits.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

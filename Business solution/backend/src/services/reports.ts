@@ -1,0 +1,115 @@
+import crypto from 'crypto';
+import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { pool } from '../db/pool';
+import { generateMonthlyNarrative } from './ai';
+
+/** Pure string arithmetic — avoids Date/toISOString round-tripping through UTC,
+ * which silently shifts month boundaries by a day in positive-UTC-offset timezones. */
+function prevMonthStart(monthStart: string): string {
+  const [y, m] = monthStart.slice(0, 7).split('-').map(Number);
+  const py = m === 1 ? y - 1 : y;
+  const pm = m === 1 ? 12 : m - 1;
+  return `${py}-${String(pm).padStart(2, '0')}-01`;
+}
+
+export interface MonthSummary {
+  month: string; // YYYY-MM-01
+  income: number;
+  expense: number;
+  net: number;
+  byCategory: Record<string, number>;
+  currency: string;
+}
+
+export async function aggregateMonth(businessId: string, monthStart: string, currency: string): Promise<MonthSummary> {
+  const monthPrefix = monthStart.slice(0, 7); // 'YYYY-MM'
+  const { rows } = await pool.query(
+    `SELECT type, category, amount FROM transactions
+     WHERE business_id = $1 AND substr(transaction_date, 1, 7) = $2`,
+    [businessId, monthPrefix]
+  );
+  let income = 0, expense = 0;
+  const byCategory: Record<string, number> = {};
+  for (const r of rows) {
+    const amt = Number(r.amount);
+    if (r.type === 'income') income += amt;
+    else { expense += amt; byCategory[r.category] = (byCategory[r.category] || 0) + amt; }
+  }
+  return { month: monthStart, income, expense, net: income - expense, byCategory, currency };
+}
+
+export async function generateMonthlyReport(businessId: string, monthStart: string, currency: string) {
+  const cur = await aggregateMonth(businessId, monthStart, currency);
+  const prev = await aggregateMonth(businessId, prevMonthStart(monthStart), currency);
+
+  const narrative = await generateMonthlyNarrative({
+    month: monthStart, income: cur.income, expense: cur.expense, net: cur.net,
+    byCategory: cur.byCategory, prevIncome: prev.income, prevExpense: prev.expense, currency
+  });
+
+  await pool.query(
+    `INSERT INTO monthly_reports (id, business_id, month, total_income, total_expenses, net_profit, ai_narrative)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     ON CONFLICT (business_id, month) DO UPDATE SET
+       total_income = excluded.total_income, total_expenses = excluded.total_expenses,
+       net_profit = excluded.net_profit, ai_narrative = excluded.ai_narrative, generated_at = CURRENT_TIMESTAMP`,
+    [crypto.randomUUID(), businessId, monthStart, cur.income, cur.expense, cur.net, narrative]
+  );
+
+  return { ...cur, narrative };
+}
+
+export async function buildReportPdf(businessName: string, summary: MonthSummary & { narrative: string }): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([595, 842]); // A4
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const green = rgb(0x12 / 255, 0xA1 / 255, 0x50 / 255);
+  const navy = rgb(0x1E / 255, 0x3A / 255, 0x5F / 255);
+  const muted = rgb(0x7A / 255, 0x86 / 255, 0x99 / 255);
+
+  let y = 790;
+  page.drawText('LedgerLite', { x: 50, y, size: 24, font: bold, color: green }); y -= 22;
+  page.drawText(`Monthly P&L — ${businessName} — ${summary.month}`, { x: 50, y, size: 12, font, color: muted }); y -= 34;
+
+  page.drawText('AI Summary', { x: 50, y, size: 13, font: bold, color: navy }); y -= 18;
+  const wrapped = wrapText(summary.narrative, 90);
+  for (const line of wrapped) { page.drawText(line, { x: 50, y, size: 11, font, color: navy }); y -= 16; }
+  y -= 16;
+
+  const sym = ({ USD: '$', INR: 'Rs.', EUR: 'EUR', GBP: 'GBP' } as Record<string, string>)[summary.currency] || '$';
+  const stat = (label: string, val: number, color = navy) => {
+    page.drawText(label, { x: 50, y, size: 10, font, color: muted });
+    page.drawText(`${sym}${Math.abs(Math.round(val)).toLocaleString()}`, { x: 50, y: y - 16, size: 18, font: bold, color });
+  };
+  stat('Income', summary.income, green);
+  page.drawText('Expenses', { x: 210, y, size: 10, font, color: muted });
+  page.drawText(`${sym}${Math.round(summary.expense).toLocaleString()}`, { x: 210, y: y - 16, size: 18, font: bold, color: navy });
+  page.drawText('Net profit', { x: 370, y, size: 10, font, color: muted });
+  page.drawText(`${sym}${Math.round(summary.net).toLocaleString()}`, { x: 370, y: y - 16, size: 18, font: bold, color: summary.net >= 0 ? green : rgb(0.84, 0.27, 0.27) });
+  y -= 50;
+
+  page.drawText('Expense breakdown', { x: 50, y, size: 13, font: bold, color: navy }); y -= 18;
+  const entries = Object.entries(summary.byCategory).sort((a, b) => b[1] - a[1]);
+  for (const [cat, amt] of entries) {
+    page.drawText(cat, { x: 50, y, size: 11, font, color: navy });
+    page.drawText(`${sym}${Math.round(amt).toLocaleString()}`, { x: 480, y, size: 11, font, color: navy });
+    y -= 16;
+    if (y < 60) break;
+  }
+
+  page.drawText('Generated by LedgerLite — idea & concept by Swayam Parikh', { x: 50, y: 30, size: 8, font, color: muted });
+  return doc.save();
+}
+
+function wrapText(text: string, maxChars: number): string[] {
+  const words = text.split(' ');
+  const lines: string[] = [];
+  let cur = '';
+  for (const w of words) {
+    if ((cur + ' ' + w).trim().length > maxChars) { lines.push(cur.trim()); cur = w; }
+    else cur += ' ' + w;
+  }
+  if (cur.trim()) lines.push(cur.trim());
+  return lines;
+}
